@@ -20,6 +20,7 @@ type Bindings = {
   GROK_BOT_AUTHORIZATION_HEADER?: string;
   GROK_BOT_DAILY_CALL_LIMIT?: string;
   GROK_BOT_PER_NUMBER_LIMIT?: string;
+  OWNER_TEST_PHONE_NUMBER?: string;
 };
 
 export async function bindings(): Promise<Bindings> {

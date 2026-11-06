@@ -24,6 +24,7 @@ type Runtime = {
   GROK_BOT_AUTHORIZATION_HEADER?: string;
   GROK_BOT_DAILY_CALL_LIMIT?: string;
   GROK_BOT_PER_NUMBER_LIMIT?: string;
+  OWNER_TEST_PHONE_NUMBER?: string;
 };
 
 export class PrepareCallError extends Error {
@@ -32,7 +33,7 @@ export class PrepareCallError extends Error {
   }
 }
 
-export async function prepareCall(runtime: Runtime, origin: string, requested?: Distributor) {
+export async function prepareCall(runtime: Runtime, origin: string, requested?: Distributor, options: { ownerTest?: boolean } = {}) {
   const distributor = requested ?? (await listDistributors(runtime.DB)).find((item) => item.status === "ready");
   if (!distributor) throw new PrepareCallError("No authorized distributors are ready", 409);
   if (distributor.status !== "ready") throw new PrepareCallError("Distributor needs documented permission before calling", 403);
@@ -43,8 +44,8 @@ export async function prepareCall(runtime: Runtime, origin: string, requested?: 
   }
 
   const nowDate = new Date();
-  if (!isWeekdayInTimeZone(nowDate, "America/New_York")) throw new PrepareCallError("Haladir calls run Monday through Friday only", 403);
-  if (!isWithinCallingWindow(nowDate, "America/New_York")) throw new PrepareCallError("Haladir calls run from 10:00 to 11:30 AM Eastern", 403);
+  if (!options.ownerTest && !isWeekdayInTimeZone(nowDate, "America/New_York")) throw new PrepareCallError("Haladir calls run Monday through Friday only", 403);
+  if (!options.ownerTest && !isWithinCallingWindow(nowDate, "America/New_York")) throw new PrepareCallError("Haladir calls run from 10:00 to 11:30 AM Eastern", 403);
 
   const calls = await listCalls(runtime.DB);
   if (calls.some((call) => call.state === "queued")) {
@@ -67,7 +68,7 @@ export async function prepareCall(runtime: Runtime, origin: string, requested?: 
   const call: HostedCall = {
     id: randomUUID(), phoneNumber, provider: "grok_bot", transport: "grok_bot_call_card",
     state: "queued", createdAt: now, updatedAt: now, authorizedAt: now,
-    interruptionCount: 0, transcript: [], distributorId: distributor.id,
+    interruptionCount: 0, transcript: [], distributorId: options.ownerTest ? undefined : distributor.id,
   };
   await saveCall(runtime.DB, call);
   const profile = await getRelayProfile(runtime.DB);
@@ -80,8 +81,8 @@ export async function prepareCall(runtime: Runtime, origin: string, requested?: 
     contactName: distributor.contactName,
     company: distributor.company,
     contactRole: distributor.contactTitle,
-    callPurpose: "Authorized follow-up from Haladir",
-    objective: profile.defaultObjective,
+    callPurpose: options.ownerTest ? "Owner-authorized Relay and Grok Bot connection test" : "Authorized follow-up from Haladir",
+    objective: options.ownerTest ? "Confirm audio quality, conversational behavior, transcript capture, and Relay callback delivery." : profile.defaultObjective,
     openingStatement: profile.openingStatement,
     talkingPoints: [profile.companySummary, profile.valueProposition],
     questionsToAsk: profile.questionsToAsk,
@@ -103,4 +104,26 @@ export async function prepareCall(runtime: Runtime, origin: string, requested?: 
     throw new PrepareCallError(call.error, 502);
   }
   return { call, distributor };
+}
+
+export async function prepareOwnerTestCall(runtime: Runtime, origin: string) {
+  const phoneNumber = normalizeE164(runtime.OWNER_TEST_PHONE_NUMBER ?? "");
+  if (!phoneNumber) throw new PrepareCallError("Owner test number is not configured", 503);
+  const now = new Date().toISOString();
+  const owner: Distributor = {
+    id: "owner-test",
+    company: "Haladir owner test",
+    phoneNumber,
+    city: "",
+    state: "GA",
+    contactName: "Anthony",
+    contactTitle: "Owner",
+    consentSource: "Owner configured private test number",
+    consentTimestamp: now,
+    internalNotes: "This is a connection test. Be friendly and brief. Confirm that the owner can hear the agent, then end politely.",
+    status: "ready",
+    createdAt: now,
+    updatedAt: now,
+  };
+  return prepareCall(runtime, origin, owner, { ownerTest: true });
 }

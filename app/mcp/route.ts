@@ -8,7 +8,7 @@ import {
   saveRelayProfile,
 } from "../../lib/relay-data";
 import { bindings } from "../../lib/hosted-calls";
-import { prepareCall } from "../../lib/prepare-call";
+import { prepareCall, prepareOwnerTestCall } from "../../lib/prepare-call";
 
 const headers = {
   "Content-Type": "application/json",
@@ -19,6 +19,13 @@ const headers = {
 };
 
 const tools = [
+  {
+    name: "prepare_owner_test_call",
+    title: "Prepare owner test call",
+    description: "Prepares one Grok native Call card only for the owner's fixed private test number. It never selects or modifies a distributor record.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+  },
   {
     name: "prepare_next_call",
     title: "Prepare next authorized call",
@@ -172,6 +179,10 @@ export async function POST(request: Request) {
     if (name === "prepare_next_call") {
       const result = await prepareCall(runtime, request.url);
       return response(body.id, toolResult(result, `Call card prepared for ${result.distributor.company}. Tap Call in Grok Bot to dial.`));
+    }
+    if (name === "prepare_owner_test_call") {
+      const result = await prepareOwnerTestCall(runtime, request.url);
+      return response(body.id, toolResult({ call: result.call }, "Owner test Call card prepared. Tap Call in Grok Bot to dial."));
     }
     if (name === "get_haladir_call_brief") return response(body.id, toolResult({ profile: await getRelayProfile(runtime.DB) }));
     if (name === "update_haladir_call_brief") {
