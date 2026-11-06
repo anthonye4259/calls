@@ -8,6 +8,7 @@ import {
   saveRelayProfile,
 } from "../../lib/relay-data";
 import { bindings } from "../../lib/hosted-calls";
+import { prepareCall } from "../../lib/prepare-call";
 
 const headers = {
   "Content-Type": "application/json",
@@ -18,6 +19,13 @@ const headers = {
 };
 
 const tools = [
+  {
+    name: "prepare_next_call",
+    title: "Prepare next authorized call",
+    description: "Selects the next ready distributor, applies Relay's schedule, spacing, DNC, pending-card, and rolling-limit controls, then asks Grok Bot to prepare exactly one native Call card.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+  },
   {
     name: "get_relay_status",
     title: "Get Relay status",
@@ -160,6 +168,10 @@ export async function POST(request: Request) {
     if (name === "get_recent_calls") {
       const limit = Math.min(25, Math.max(1, Number(args.limit ?? 10)));
       return response(body.id, toolResult({ calls: (await listCalls(runtime.DB)).slice(0, limit) }));
+    }
+    if (name === "prepare_next_call") {
+      const result = await prepareCall(runtime, request.url);
+      return response(body.id, toolResult(result, `Call card prepared for ${result.distributor.company}. Tap Call in Grok Bot to dial.`));
     }
     if (name === "get_haladir_call_brief") return response(body.id, toolResult({ profile: await getRelayProfile(runtime.DB) }));
     if (name === "update_haladir_call_brief") {
